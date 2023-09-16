@@ -1,19 +1,18 @@
 %%% DBR 2013 -- Torque balance simulations %%%
 %%% DJ edits May 2023
 
-function [M,t,dMdt,tt,AField]=BrownV2v2(Bv,Bs,f,T,visc,N,cycs,tPts,rhy,rco)
-%  function [M,t,AField]=BrownV2v2(Bv,Bs,f,T,visc,N,cycs,tPts,rhy,rco)
+function [M,t,dMdt,tt,AField]=BrownSRK4(Bv,Bs,f,T,visc,N,cycs,tPts,rhy,rco)
 
 if nargin<1; Bv = 10; end;        %alternating field in 3rd direction [mT]
 if nargin<2; Bs = [0,1,0]; end;   %static field in all three directions [mT]
 if nargin<3; f = 1000; end;       %frequency [Hz]
 if nargin<4; T = 300; end;        %temperature [degrees K]
 if nargin<5; visc = .001; end;    %viscosity [Pas]
-if nargin<6; N = 100; end;       %number of particles
-if nargin<7; cycs = 5; end;        %19; end;      %number of cycles
-if nargin<8; tPts =100; end;    %time points
-if nargin<9;  rhy = 60e-9; end   %hydrodynamic radius [m] (defaults give tE=1.04ms)
-if nargin<10; rco = 15e-9; end  %core radius [m]
+if nargin<6; N = 10^3; end;       %number of particles
+if nargin<7; cycs = 5; end;        %number of cycles
+if nargin<8; tPts =(10^0)*(2^7); end;    %time points
+if nargin<9;  rhy = 60e-9; end % 60e-9; end;   %hydrodynamic radius [m] (defaults give tE=1.04ms)
+if nargin<10; rco = 15e-9; end %15e-9; end;   %core radius [m]
 
 rho  = 3200;   %density [kg/m^3] from data sheet 3.2g/ccm
 Bv=Bv/1000;    %change units of fields from mT to T
@@ -46,28 +45,34 @@ Ms   = 76; %70        %saturation magnetization
 
 %% Stochastic differential equation loop
 in=1;
-for i=0:dt:tf
-   h=randn(N,3); %stochastic term for fluctuations
-   B=b*cos(2*pi*f*i); %drive field over time
-   B(:,1)=B(:,1)+Bs(1); B(:,2)=B(:,2)+Bs(2); B(:,3)=B(:,3)+Bs(3);
-   AField(in)=B(1,3);
 
-   M(in,:)=sum(m);
-    
-  TB=Du*cross(cross(m,B),m); %mag torque  
-  %Ts=sqrt(2*Dv)*cross(h,m); %stochastic torque
-  Ts=sqrt(2*Dv)*[h(:,2).*m(:,3)-h(:,3).*m(:,2),h(:,3).*m(:,1)-h(:,1).*m(:,3),h(:,1).*m(:,2)-h(:,2).*m(:,1)];
+for t=0:dt:tf
+    % Compute stochastic increments
+    dW1 = sqrt(dt) * randn(N,3);
+    dW2 = sqrt(dt) * randn(N,3);
+    dW3 = sqrt(dt) * randn(N,3);
+    dW4 = sqrt(dt) * randn(N,3);
+    % Compute RK4 increments
+    %Ts=g(m, Dv, N);
+    k1 = h(t, m, Du, b, Dv, Bs, f) * dt + g(m, Dv, N) .* dW1;
+    k2 = h(t + 0.5 * dt, m + 0.5 * k1, Du, b, Dv, Bs, f) * dt + g(m + 0.5 * k1, Dv, N) .* dW2;
+    k3 = h(t + 0.5 * dt, m + 0.5 * k2, Du, b, Dv, Bs, f)  * dt +  g(m + 0.5 * k2, Dv, N) .* dW3;
+    k4 = h(t + dt, m + k3, Du, b, Dv, Bs, f) * dt + g(m + k3, Dv, N) .* dW4;
+    %k2=0; k3=0; k4=0;
 
-%stochastic diffeq Stratanovich with drift term
-  dm = (TB-2*m*Dv)*dt + Ts*sqrt(dt);
-  m = m + dm; 
- 
-%normalize the magnitude  
- nm = sqrt(m(:,1).^2+m(:,2).^2+m(:,3).^2); 
- m(:,1)=m(:,1)./nm; m(:,2)=m(:,2)./nm; m(:,3)=m(:,3)./nm;
+    % Update m using RK4 formula
+    dm = (1/6) * (k1 + 2 * k2 + 2 * k3 + k4);
+    m = m + dm;
 
-  in=in+1;
-end;
+    %normalize the magnitude 
+    nm = sqrt(m(:,1).^2+m(:,2).^2+m(:,3).^2);
+    m(:,1)=m(:,1)./nm; m(:,2)=m(:,2)./nm; m(:,3)=m(:,3)./nm;
+   
+    % Save mean
+    M(in,:)=sum(m);
+    in=in+1;
+end
+t=0:dt:tf; %Return the time points
  
 %DJ Plot the time-derivative of the magnetizaiton
 % load('my_colormap.mat'); colormap(my_colors);
@@ -79,7 +84,7 @@ end;
 % xlabel('Time [s]'); ylabel('Magnetization');
 % set(gca,'FontWeight','Bold');
 % 
-% dt=t(2)-t(1);
+% %dt=t(2)-t(1);
 % tt=(t(1:end-1)+t(2:end))/2;
 % dMxdt=(M(2:end,1)-M(1:end-1,1))/dt;
 % dMydt=(M(2:end,2)-M(1:end-1,2))/dt;
@@ -95,4 +100,19 @@ end;
 % dMdt(:,2)=dMydt;
 % dMdt(:,3)=dMzdt;
 
+end
+
+
+
+function val=h(t, m, Du, b, Dv, Bs, f)
+B=b*cos(2*pi*f*t); %drive field over time
+B(:,1)=B(:,1)+Bs(1); B(:,2)=B(:,2)+Bs(2); B(:,3)=B(:,3)+Bs(3);
+TB = Du*cross(cross(m,B),m); %mag torque
+val = TB-2*m*Dv;
+end
+
+function val=g(m, Dv, N)
+h=randn(N,3); %stochastic term for fluctuations
+Ts=sqrt(2*Dv)*[h(:,2).*m(:,3)-h(:,3).*m(:,2),h(:,3).*m(:,1)-h(:,1).*m(:,3),h(:,1).*m(:,2)-h(:,2).*m(:,1)];
+val = Ts;
 end
