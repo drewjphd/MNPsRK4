@@ -3,7 +3,7 @@
 
 %% Pick an initial time grid size
 clear all;
-tPts =100;     %time points
+tPts =600;     %time points
 
 %% Set parameter values as desired
 Bv = 10;         %alternating field in 3rd direction [mT]
@@ -11,7 +11,7 @@ Bs = [0,1,0];    %static field in all three directions [mT]
 f = 300;        %frequency [Hz]
 T = 300;         %temperature [degrees K]
 visc = .001;     %viscosity [Pa-s]
-N = 10^4;        %number of particles
+N = 10^3;        %number of particles
 cycs = 5;         %19; end;      %number of cycles
 rhy = 60e-9;   %hydrodynamic radius [m] (defaults give tE=1.04ms)
 rco = 15e-9;  %core radius [m]
@@ -27,16 +27,18 @@ change=1; %initialize
 [M,t]=BrownV2v2(Bv,Bs,f,T,visc,N,cycs,tPts,rhy,rco);
 figure; plot(t,M); title('1st order');
 
-while change>0.0025;
-    tPts=2*tPts
+figure(1);
+while change>0.01;
+    tPts=tPts+50
     [Mnext,tnext]=BrownV2v2(Bv,Bs,f,T,visc,N,cycs,tPts,rhy,rco);
     temp=abs(Mnext(1:2:end,:));
     change=mean(sum(abs(Mnext(1:2:end,:)-M))/sum(temp(:)))
     M=Mnext;
     t=tnext;
+    hold on; plot(tPts,change,'o');
 end
   
-figure; plot(t,M); title('1st order');
+figure(2); plot(t,M); title('1st order');
 
 
 %Now repeat the experiment for SRK4
@@ -44,17 +46,18 @@ figure; plot(t,M); title('1st order');
 change=1; %initialize
 tPts=100; %initialize
 [M,t]=BrownSRK4(Bv,Bs,f,T,visc,N,cycs,tPts,rhy,rco);
-figure; plot(t,M);  title('SRK4');
-while change>0.0025;
-    tPts=2*tPts
+figure(3); plot(t,M);  title('SRK4');
+while change>0.01;
+    tPts=tPts+50
     [Mnext,tnext]=BrownSRK4(Bv,Bs,f,T,visc,N,cycs,tPts,rhy,rco);
     temp=abs(Mnext(1:2:end,:));
     change=mean(sum(abs(Mnext(1:2:end,:)-M))/sum(temp(:)))
     M=Mnext;
     t=tnext;
+    hold on; plot(tPts,change,'o');
 end
   
-figure; plot(t,M); title('SRK4');
+figure(4); plot(t,M); title('SRK4');
 
 
 
